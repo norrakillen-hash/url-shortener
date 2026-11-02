@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.redis_client import redis_client
 from app.schemas import LinkCreate, LinkOut
 from app.database import get_db
 from app.models import Link
@@ -40,6 +41,14 @@ async def create_link(payload: LinkCreate, db: AsyncSession = Depends(get_db)):
 # 1. Эндпоинт-редиректор
 @app.get("/links/{code}")
 async def redirect_to_url(code: str, db: AsyncSession = Depends(get_db)):
+    # 1. Проверяем кэш (Redis)
+    cached_url = await redis_client.get(f"link:{code}")
+    
+    if cached_url:
+        # Если нашли в кэше — сразу редирект (и можно асинхронно обновить счетчик в БД, но для простоты пока пропустим обновление счетчика при кэш-хите)
+        return RedirectResponse(url=cached_url)
+
+    # 2. Если в кэше нет — идем в БД
     stmt = select(Link).where(Link.code == code)
     result = await db.execute(stmt)
     link = result.scalar_one_or_none()
@@ -47,11 +56,13 @@ async def redirect_to_url(code: str, db: AsyncSession = Depends(get_db)):
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
     
-    # Увеличиваем счетчик и сохраняем
+    # 3. Сохраняем в Redis на 1 час (3600 секунд), чтобы в следующий раз не идти в БД
+    await redis_client.set(f"link:{code}", link.url, ex=3600)
+    
+    # 4. Увеличиваем счетчик в БД
     link.clicks += 1
     await db.commit()
     
-    # Отдаем HTTP 307 (Temporary Redirect)
     return RedirectResponse(url=link.url)
 
 # 2. Эндпоинт для просмотра статистики

@@ -1,6 +1,10 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
   # Сервис с базой данных
   db:
     image: postgres:15-alpine
@@ -20,10 +24,11 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - redis
     # Переопределяем переменную окружения, чтобы приложение стучалось к контейнеру 'db', а не к localhost
     environment:
       - DATABASE_URL=postgresql+asyncpg://shortener:mypassword@db:5432/shortener_db
-
+      - REDIS_URL=redis://redis:6379/0
 # Именованный том для сохранения данных БД между перезапусками
 volumes:
   postgres_data:
