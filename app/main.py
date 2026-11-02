@@ -1,5 +1,6 @@
 import secrets
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -36,15 +37,28 @@ async def create_link(payload: LinkCreate, db: AsyncSession = Depends(get_db)):
     return new_link
 
 
-@app.get("/links/{code}", response_model=LinkOut)
-async def get_link(code: str, db: AsyncSession = Depends(get_db)):
-    # Формируем SQL-запрос: SELECT * FROM links WHERE code = code
+# 1. Эндпоинт-редиректор
+@app.get("/links/{code}")
+async def redirect_to_url(code: str, db: AsyncSession = Depends(get_db)):
     stmt = select(Link).where(Link.code == code)
-    
-    # Выполняем его асинхронно
     result = await db.execute(stmt)
+    link = result.scalar_one_or_none()
     
-    # Достаем одну запись или None, если ничего не нашли
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    
+    # Увеличиваем счетчик и сохраняем
+    link.clicks += 1
+    await db.commit()
+    
+    # Отдаем HTTP 307 (Temporary Redirect)
+    return RedirectResponse(url=link.url)
+
+# 2. Эндпоинт для просмотра статистики
+@app.get("/links/{code}/stats", response_model=LinkOut)
+async def get_link_stats(code: str, db: AsyncSession = Depends(get_db)):
+    stmt = select(Link).where(Link.code == code)
+    result = await db.execute(stmt)
     link = result.scalar_one_or_none()
     
     if not link:

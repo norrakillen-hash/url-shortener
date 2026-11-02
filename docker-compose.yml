@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Сервис с базой данных
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: shortener_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Сервис с нашим приложением
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    # Переопределяем переменную окружения, чтобы приложение стучалось к контейнеру 'db', а не к localhost
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://shortener:mypassword@db:5432/shortener_db
+
+# Именованный том для сохранения данных БД между перезапусками
+volumes:
+  postgres_data:

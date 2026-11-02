@@ -8,3 +8,4 @@ class LinkCreate(BaseModel):
 class LinkOut(BaseModel):
     code: str
     url: str
+    clicks: int
